@@ -46,9 +46,9 @@ from openai import OpenAI
 
 # ── Configuration ────────────────────────────────────────────────────────────
 
-API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
-MODEL_NAME = os.getenv("MODEL_NAME") or "meta-llama/Llama-3.1-8B-Instruct"
+API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "meta-llama/Llama-3.1-8B-Instruct")
+HF_TOKEN = os.getenv("HF_TOKEN")
 
 # Default to the live HF Space so `python inference.py` works with zero setup.
 # Override with ENV_BASE_URL=http://localhost:7860 for local development.
@@ -379,11 +379,11 @@ def run_task(llm: OpenAI, env: httpx.Client, task_name: str) -> None:
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    if not API_KEY:
-        print("ERROR: HF_TOKEN or API_KEY environment variable not set.", file=sys.stderr)
+    if not HF_TOKEN:
+        print("ERROR: HF_TOKEN environment variable not set.", file=sys.stderr)
         sys.exit(1)
 
-    llm = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    llm = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
 
     with httpx.Client(base_url=ENV_BASE_URL, timeout=60.0) as env:
         # Sanity-ping the environment before running tasks.
