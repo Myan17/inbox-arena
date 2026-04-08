@@ -1,0 +1,25 @@
+name: inbox-arena
+version: "1.0.0"
+description: >
+  An OpenEnv-compliant environment that simulates real-world email triage.
+  Agents must classify, prioritize, route, and draft responses to emails
+  across three difficulty levels (easy, medium, hard) with meaningful
+  partial-credit reward signals.
+
+tasks:
+  - name: classify_easy
+    difficulty: easy
+    description: Classify an email into one of 5 categories (spam, urgent, routine, newsletter, personal).
+
+  - name: triage_medium
+    difficulty: medium
+    description: Classify, assign priority (P0-P3), and route to the correct department.
+
+  - name: full_triage_hard
+    difficulty: hard
+    description: Full triage with classification, priority, routing, and drafting a response.
+
+server:
+  entry_point: server.app:app
+  port: 7860
+  dockerfile: server/Dockerfile

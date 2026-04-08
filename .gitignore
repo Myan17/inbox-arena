@@ -1,0 +1,29 @@
+# Secrets — never commit
+.env
+.env.local
+*.pem
+*.key
+
+# Claude Code local context — never commit to public repo
+CLAUDE.md
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
