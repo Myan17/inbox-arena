@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from typing import Any, Dict, Optional
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Body, FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from models import Observation, State, TriageAction
@@ -256,12 +256,19 @@ async def list_tasks():
 
 
 @app.post("/reset", response_model=ResetResponse)
-async def reset(request: ResetRequest):
+async def reset(request: Optional[ResetRequest] = Body(None)):
     """
     Reset the environment and start a new episode.
 
+    Body is optional — an empty/missing body falls back to ResetRequest
+    defaults (task_name="classify_easy", seed=None). This is required by
+    the OpenEnv submission validator, which pings POST /reset with no body.
+
     Returns the initial observation with the email to triage.
     """
+    if request is None:
+        request = ResetRequest()
+
     observation = env.reset(
         task_name=request.task_name,
         seed=request.seed,
