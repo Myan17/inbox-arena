@@ -37,9 +37,24 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import textwrap
 from typing import List, Optional
+
+# ── Bootstrap: ensure dependencies are installed in validator environments ──
+def _ensure_deps() -> None:
+    for pkg in ("requests", "openai"):
+        try:
+            __import__(pkg)
+        except ImportError:
+            subprocess.check_call(
+                [sys.executable, "-m", "pip", "install", "-q", pkg],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
+_ensure_deps()
 
 import requests
 from openai import OpenAI
