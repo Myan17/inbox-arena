@@ -41,7 +41,7 @@ import sys
 import textwrap
 from typing import List, Optional
 
-import httpx
+import requests
 from openai import OpenAI
 
 # ── Configuration ────────────────────────────────────────────────────────────
@@ -295,7 +295,7 @@ def call_llm(llm: OpenAI, observation: dict) -> dict:
 
 def _run_one_seed(
     llm: OpenAI,
-    env: httpx.Client,
+    env: requests.Session,
     task_name: str,
     seed: int,
 ) -> tuple[dict, float, bool, Optional[str]]:
@@ -312,18 +312,18 @@ def _run_one_seed(
     error: Optional[str] = None
 
     try:
-        reset_resp = env.post("/reset", json={"task_name": task_name, "seed": seed})
+        reset_resp = env.post(f"{ENV_BASE_URL}/reset", json={"task_name": task_name, "seed": seed}, timeout=60)
         reset_resp.raise_for_status()
         observation = reset_resp.json()["observation"]
 
         action_dict = call_llm(llm, observation)
 
-        step_resp = env.post("/step", json={"action": action_dict})
+        step_resp = env.post(f"{ENV_BASE_URL}/step", json={"action": action_dict}, timeout=60)
         step_resp.raise_for_status()
         step_data = step_resp.json()
         reward = float(step_data.get("reward") or 0.0)
         done = bool(step_data.get("done", False))
-    except httpx.HTTPStatusError as http_err:
+    except requests.exceptions.HTTPError as http_err:
         error = f"HTTP {http_err.response.status_code}: {http_err.response.text[:200]}"
     except Exception as exc:
         error = f"{type(exc).__name__}: {exc}"
@@ -331,7 +331,7 @@ def _run_one_seed(
     return action_dict, reward, done, error
 
 
-def run_task(llm: OpenAI, env: httpx.Client, task_name: str) -> None:
+def run_task(llm: OpenAI, env: requests.Session, task_name: str) -> None:
     """
     Run a single task end-to-end across all benchmark seeds.
 
@@ -385,10 +385,10 @@ def main() -> None:
 
     llm = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
 
-    with httpx.Client(base_url=ENV_BASE_URL, timeout=60.0) as env:
+    with requests.Session() as env:
         # Sanity-ping the environment before running tasks.
         try:
-            health = env.get("/")
+            health = env.get(f"{ENV_BASE_URL}/", timeout=60)
             health.raise_for_status()
         except Exception as exc:
             print(
