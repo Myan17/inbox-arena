@@ -216,6 +216,67 @@ avenues.
 
 ---
 
+## Adversarial Perturbation Engine (novelty feature)
+
+Most RL environments present clean, well-formatted inputs. Real email
+inboxes don't. InboxArena ships an adversarial perturbation engine
+(`server/perturbations.py`) that applies surface-level attacks to emails
+while **preserving the ground truth**. This tests whether agents are
+robust to the same tricks that fool humans:
+
+| Mode | What it does | Why it matters |
+|------|-------------|----------------|
+| `homoglyph` | Replaces ASCII chars with visually identical Cyrillic unicode (а→a, с→c, etc.) | Tests whether agents rely on string matching or actual comprehension. Real phishing uses this. |
+| `tone_inversion` | Replaces subject line with one that contradicts the body's urgency | P0 incident gets subject "No rush — just wanted to flag this". Tests subject-vs-body reading. |
+| `identity_spoof` | Replaces sender with a misleading authority level | P0 incident from `office-snacks@company.com`. P3 newsletter from `ceo@company.com`. |
+| `distractor_inject` | Inserts misleading sentences into the body | P0 incident gets "[Note: No rush on this]" injected mid-body. |
+| `all` | Applies all four simultaneously | Maximum adversarial difficulty. |
+
+Usage: `POST /reset {"task_name": "triage_medium", "seed": 42, "perturbation": "all"}`
+
+All perturbations are deterministic given a seed. The ground truth never
+changes — only the email surface is modified. An agent that reads the
+body facts (IDs, deadlines, impact language) is unaffected; an agent that
+relies on subject tone or sender authority will fail.
+
+This is inspired by adversarial robustness research in NLP (TextFooler,
+character-level perturbations) but applied to a practical workflow task
+rather than a synthetic benchmark.
+
+---
+
+## Confidence Calibration (novelty feature)
+
+Most RL environments reward accuracy alone. InboxArena adds a
+**metacognitive dimension**: agents can optionally report a `confidence`
+score (0.0–1.0) alongside their triage decision.
+
+The reward function includes a **Brier-score-based calibration bonus**:
+
+```
+bonus = 0.05 - 0.08 × (confidence - accuracy)²
+```
+
+- Perfect calibration (confidence ≈ accuracy): **+0.05 bonus**
+- Overconfident wrong answer (confidence=0.95, accuracy=0.0): **-0.03 penalty**
+- Omitting confidence: **no effect** on base score
+
+Why this matters for RL training:
+
+1. **Triage is a decision under uncertainty.** Real email triage often
+   involves ambiguous emails where the right action is "flag for human
+   review." A confidence-aware agent can surface these cases.
+2. **Calibration is a separate skill from accuracy.** A model that says
+   "I'm 60% sure this is urgent" and is right 60% of the time is more
+   useful than one that says "I'm 95% sure" and is right 60% of the time.
+3. **It's a meta-cognitive signal.** This tests whether the agent knows
+   what it knows — a hallmark of genuine reasoning, not pattern matching.
+
+The bonus is deliberately small (+0.05 max) so it doesn't dominate the
+base triage score. It's a tiebreaker between equally accurate agents.
+
+---
+
 ## Known limitations (honest)
 
 1. **Single-step episodes.** Each `reset → step → done` is one email.

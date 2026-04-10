@@ -60,6 +60,17 @@ class TriageAction(BaseModel):
         None,
         description="Drafted reply to the email (required for hard task)",
     )
+    confidence: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Agent's self-assessed confidence in its answer (0.0–1.0). "
+            "Optional but rewarded: well-calibrated confidence earns a "
+            "Brier-score bonus of up to +0.05; overconfident wrong answers "
+            "are penalized. Omitting this field has no effect on the base score."
+        ),
+    )
 
 
 # ── Observation ──────────────────────────────────────────────────────────────

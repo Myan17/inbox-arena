@@ -127,22 +127,62 @@ def _length_score(text: str) -> float:
     return 0.2  # wall-of-text penalty
 
 
+def _confidence_bonus(confidence: float | None, base_score: float) -> tuple[float, str]:
+    """
+    Brier-score-based calibration bonus/penalty.
+
+    Rewards agents that know what they know: if you claim confidence=0.95
+    and score 0.95, you earn +0.05. If you claim confidence=0.95 and
+    score 0.20, you lose -0.03. Omitting confidence returns (0.0, "").
+
+    The bonus is capped at +0.05 and the penalty at -0.03 to avoid
+    dominating the base score. This is a meta-cognitive signal — it tests
+    whether the agent can distinguish "I'm sure" from "I'm guessing",
+    which is critical for real-world triage (uncertain classifications
+    should be flagged for human review, not silently committed).
+
+    Brier score = (confidence - accuracy)^2, range [0, 1].
+    We map: 0 → +0.05 (perfect calibration), 1 → -0.03 (maximally wrong).
+    """
+    if confidence is None:
+        return 0.0, ""
+
+    brier = (confidence - base_score) ** 2
+    # Linear interpolation: brier=0 → +0.05, brier=1 → -0.03
+    bonus = 0.05 - 0.08 * brier
+    bonus = max(-0.03, min(0.05, bonus))
+
+    if bonus >= 0:
+        return round(bonus, 3), f"Calibration: Brier={brier:.2f} (+{bonus:.3f})"
+    return round(bonus, 3), f"Calibration: Brier={brier:.2f} ({bonus:.3f})"
+
+
 # ── Task Graders ─────────────────────────────────────────────────────────────
 
 def grade_easy(action: TriageAction, truth: GroundTruth) -> tuple[float, str]:
     """
     Easy task: Email classification only.
     Score: 1.0 if correct category, 0.0 otherwise.
+    + optional confidence calibration bonus (up to +0.05).
     """
     predicted = _normalize(action.category)
     expected = _normalize(truth.category.value)
 
     if predicted == expected:
-        return 1.0, f"Correct! Category is '{truth.category.value}'."
-    return 0.0, (
-        f"Incorrect. You predicted '{action.category}', "
-        f"but the correct category is '{truth.category.value}'."
-    )
+        base = 1.0
+        feedback = f"Correct! Category is '{truth.category.value}'."
+    else:
+        base = 0.0
+        feedback = (
+            f"Incorrect. You predicted '{action.category}', "
+            f"but the correct category is '{truth.category.value}'."
+        )
+
+    cal_bonus, cal_feedback = _confidence_bonus(action.confidence, base)
+    if cal_feedback:
+        feedback += f" | {cal_feedback}"
+
+    return round(min(max(base + cal_bonus, 0.0), 1.05), 3), feedback
 
 
 def grade_medium(action: TriageAction, truth: GroundTruth) -> tuple[float, str]:
@@ -187,8 +227,13 @@ def grade_medium(action: TriageAction, truth: GroundTruth) -> tuple[float, str]:
             f"got '{action.department}')"
         )
 
+    cal_bonus, cal_feedback = _confidence_bonus(action.confidence, score)
+    if cal_feedback:
+        feedback_parts.append(cal_feedback)
+    score += cal_bonus
+
     feedback = " | ".join(feedback_parts) + f" | Total: {score:.2f}"
-    return round(score, 2), feedback
+    return round(min(max(score, 0.0), 1.05), 3), feedback
 
 
 def grade_hard(action: TriageAction, truth: GroundTruth) -> tuple[float, str]:
@@ -288,8 +333,13 @@ def grade_hard(action: TriageAction, truth: GroundTruth) -> tuple[float, str]:
 
     score += response_subtotal
 
+    cal_bonus, cal_feedback = _confidence_bonus(action.confidence, min(score, 1.0))
+    if cal_feedback:
+        feedback_parts.append(cal_feedback)
+    score += cal_bonus
+
     feedback = " | ".join(feedback_parts) + f" | Total: {score:.2f}"
-    return round(min(score, 1.0), 2), feedback
+    return round(min(max(score, 0.0), 1.05), 3), feedback
 
 
 # ── Dispatcher ───────────────────────────────────────────────────────────────

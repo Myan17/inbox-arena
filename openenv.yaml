@@ -1,10 +1,11 @@
 name: inbox-arena
-version: "1.0.0"
+version: "1.1.0"
 description: >
   An OpenEnv-compliant environment that simulates real-world email triage.
   Agents must classify, prioritize, route, and draft responses to emails
   across three difficulty levels (easy, medium, hard) with meaningful
-  partial-credit reward signals.
+  partial-credit reward signals. Features adversarial perturbation testing
+  and confidence-calibrated scoring.
 
 tasks:
   - name: classify_easy
@@ -18,6 +19,22 @@ tasks:
   - name: full_triage_hard
     difficulty: hard
     description: Full triage with classification, priority, routing, and drafting a response.
+
+features:
+  - name: adversarial_perturbations
+    description: >
+      Optional perturbation parameter on /reset applies surface-level attacks
+      (unicode homoglyphs, tone-inverted subjects, spoofed senders, injected
+      distractors) while preserving ground truth. Tests whether agents read
+      email content rather than relying on surface cues.
+    modes: [none, homoglyph, tone_inversion, identity_spoof, distractor_inject, all]
+
+  - name: confidence_calibration
+    description: >
+      Optional confidence field (0.0-1.0) on actions. Well-calibrated
+      confidence earns a Brier-score bonus of up to +0.05; overconfident
+      wrong answers are penalized up to -0.03. Rewards metacognitive
+      self-awareness, not just accuracy.
 
 server:
   entry_point: server.app:app

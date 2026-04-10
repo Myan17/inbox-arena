@@ -56,6 +56,14 @@ class ResetRequest(BaseModel):
         None,
         description="Optional seed for reproducible email selection",
     )
+    perturbation: str = Field(
+        "none",
+        description=(
+            "Adversarial perturbation mode: none, homoglyph, tone_inversion, "
+            "identity_spoof, distractor_inject, all. Modifies email surface "
+            "cues while preserving ground truth — tests agent robustness."
+        ),
+    )
 
 
 class StepRequest(BaseModel):
@@ -172,6 +180,7 @@ async def mcp(request: Request):
             obs = env.reset(
                 task_name=arguments.get("task_name", "classify_easy"),
                 seed=arguments.get("seed"),
+                perturbation=arguments.get("perturbation", "none"),
             )
             return {
                 "jsonrpc": "2.0",
@@ -272,6 +281,7 @@ async def reset(request: Optional[ResetRequest] = Body(None)):
     observation = env.reset(
         task_name=request.task_name,
         seed=request.seed,
+        perturbation=request.perturbation,
     )
 
     if observation.error_message:

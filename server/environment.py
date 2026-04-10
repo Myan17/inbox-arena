@@ -24,6 +24,7 @@ from models import (
 )
 from server.data import get_random_email
 from server.graders import grade
+from server.perturbations import apply_perturbation, VALID_PERTURBATIONS
 
 
 # ── Task Definitions ─────────────────────────────────────────────────────────
@@ -100,6 +101,7 @@ class EmailTriageEnvironment:
         self,
         task_name: str = "classify_easy",
         seed: int | None = None,
+        perturbation: str = "none",
     ) -> Observation:
         """
         Start a new episode.
@@ -107,6 +109,9 @@ class EmailTriageEnvironment:
         Args:
             task_name: One of classify_easy, triage_medium, full_triage_hard
             seed: Optional seed for deterministic email selection
+            perturbation: Adversarial perturbation mode. One of: none,
+                homoglyph, tone_inversion, identity_spoof, distractor_inject,
+                all. Modifies email surface cues while preserving ground truth.
 
         Returns:
             Initial observation with the email and task instructions.
@@ -124,6 +129,15 @@ class EmailTriageEnvironment:
         self._email_seed = seed
         email, ground_truth = get_random_email(seed=seed, task_name=task_name)
         self._ground_truth = ground_truth
+
+        # Apply adversarial perturbation (surface only — ground truth unchanged)
+        if perturbation and perturbation != "none":
+            email = apply_perturbation(
+                email,
+                ground_truth_priority=ground_truth.priority.value,
+                mode=perturbation,
+                seed=seed,
+            )
 
         self._state = State(
             episode_id=str(uuid.uuid4()),
