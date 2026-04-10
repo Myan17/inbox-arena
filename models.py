@@ -109,7 +109,7 @@ class Observation(BaseModel):
     email: Optional[EmailData] = Field(None, description="The email to triage")
     task: Optional[TaskInfo] = Field(None, description="Task description and requirements")
     feedback: Optional[str] = Field(None, description="Feedback after the agent submits an action")
-    reward: Optional[float] = Field(None, description="Reward for the last action (0.0–1.0)")
+    reward: Optional[float] = Field(None, gt=0.0, lt=1.0, description="Reward for the last action — strictly between 0 and 1")
     done: bool = Field(False, description="Whether the episode is over")
     error_message: Optional[str] = Field(None, description="Error details if the action was invalid")
 

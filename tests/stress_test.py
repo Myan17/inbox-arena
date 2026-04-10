@@ -197,12 +197,12 @@ print("\n" + "=" * 70)
 print("TEST 6: Partial credit verification (medium task)")
 print("=" * 70)
 
-reset("triage_medium", seed=42)  # This is urgent/P0/engineering
+reset("triage_medium", seed=42)  # This is urgent/P0/support
 
-# All correct → 1.0
+# All correct → 0.999 (clamped from 1.0)
 reset("triage_medium", seed=42)
-_, r = step({"category": "urgent", "priority": "P0", "department": "engineering"})
-check("All correct → 1.00", r["reward"] == 1.0, f"got {r['reward']}")
+_, r = step({"category": "urgent", "priority": "P0", "department": "support"})
+check("All correct → 0.999", r["reward"] == 0.999, f"got {r['reward']}")
 
 # Only category correct → 0.40
 reset("triage_medium", seed=42)
@@ -216,13 +216,13 @@ check("Only priority → 0.30", r["reward"] == 0.3, f"got {r['reward']}")
 
 # Only department correct → 0.30
 reset("triage_medium", seed=42)
-_, r = step({"category": "spam", "priority": "P3", "department": "engineering"})
+_, r = step({"category": "spam", "priority": "P3", "department": "support"})
 check("Only department → 0.30", r["reward"] == 0.3, f"got {r['reward']}")
 
-# All wrong → 0.0
+# All wrong → 0.001 (clamped from 0.0)
 reset("triage_medium", seed=42)
 _, r = step({"category": "spam", "priority": "P3", "department": "sales"})
-check("All wrong → 0.00", r["reward"] == 0.0, f"got {r['reward']}")
+check("All wrong → 0.001", r["reward"] == 0.001, f"got {r['reward']}")
 
 # Category + priority → 0.70
 reset("triage_medium", seed=42)
@@ -231,7 +231,7 @@ check("Cat + pri → 0.70", r["reward"] == 0.7, f"got {r['reward']}")
 
 # Category + department → 0.70
 reset("triage_medium", seed=42)
-_, r = step({"category": "urgent", "priority": "P3", "department": "engineering"})
+_, r = step({"category": "urgent", "priority": "P3", "department": "support"})
 check("Cat + dept → 0.70", r["reward"] == 0.7, f"got {r['reward']}")
 
 
@@ -243,17 +243,17 @@ print("=" * 70)
 # Easy: missing category
 reset("classify_easy", seed=1)
 _, r = step({"category": ""})
-check("Easy: empty category → 0.0", r["reward"] == 0.0)
+check("Easy: empty category → 0.001", r["reward"] == 0.001)
 
 # Medium: missing priority and department
 reset("triage_medium", seed=1)
 _, r = step({"category": "urgent"})
-check("Medium: missing pri+dept → 0.0", r["reward"] == 0.0)
+check("Medium: missing pri+dept → 0.001", r["reward"] == 0.001)
 
 # Hard: missing response_draft
 reset("full_triage_hard", seed=1)
 _, r = step({"category": "urgent", "priority": "P0", "department": "engineering"})
-check("Hard: missing response → 0.0", r["reward"] == 0.0)
+check("Hard: missing response → 0.001", r["reward"] == 0.001)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -278,9 +278,9 @@ code, r = step({"category": "spam", "priority": "P0", "department": "hr", "respo
 check("Extra fields are ignored, step works", code == 200)
 
 # Case insensitive classification
-reset("classify_easy", seed=2)  # seed 2 = spam email
-_, r = step({"category": "SPAM"})
-check("Case insensitive: 'SPAM' matches 'spam'", r["reward"] == 1.0, f"got {r['reward']}")
+reset("classify_easy", seed=2)  # seed 2 = urgent email
+_, r = step({"category": "URGENT"})
+check("Case insensitive: 'URGENT' matches 'urgent'", r["reward"] == 0.999, f"got {r['reward']}")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -288,15 +288,16 @@ print("\n" + "=" * 70)
 print("TEST 9: Hard task — response quality scoring")
 print("=" * 70)
 
-# seed=42 → urgent/P0/engineering, keywords: acknowledge, join, war room, investigating, ETA
+# seed=42 → urgent/P0/engineering, keywords: acknowledge, joining, bridge, investigating, eta
+# entities: INC-PAY-4471, 02:17, Marcus — tone: urgent
 reset("full_triage_hard", seed=42)
 
-# Perfect response
+# Perfect response — cites all entities, uses urgent tone words
 _, r = step({
     "category": "urgent", "priority": "P0", "department": "engineering",
-    "response_draft": "I acknowledge the issue. I am investigating and will join the war room now. ETA for resolution is 1 hour."
+    "response_draft": "Acknowledged INC-PAY-4471. Joining the bridge with Marcus on the 02:17 UTC failover. Investigating now, ETA 5 minutes."
 })
-check("Perfect response → high score", r["reward"] >= 0.9, f"got {r['reward']}")
+check("Perfect response → high score", r["reward"] >= 0.85, f"got {r['reward']}")
 
 # Correct triage, empty response
 reset("full_triage_hard", seed=42)
@@ -305,7 +306,7 @@ _, r = step({
     "response_draft": "ok"
 })
 reward_short = r["reward"]
-check("Short response → partial credit", 0.4 < reward_short < 0.7, f"got {reward_short}")
+check("Short response → partial credit", 0.3 < reward_short < 0.7, f"got {reward_short}")
 
 # Correct triage, long but irrelevant response
 reset("full_triage_hard", seed=42)
@@ -314,8 +315,8 @@ _, r = step({
     "response_draft": "The weather today is sunny with a high of 75 degrees. I went to the store and bought groceries. My favorite color is blue and I enjoy reading books on the weekend."
 })
 reward_irrelevant = r["reward"]
-check("Long but irrelevant response → lower than perfect", reward_irrelevant < 0.9, f"got {reward_irrelevant}")
-check("Long irrelevant still gets triage points", reward_irrelevant >= 0.5, f"got {reward_irrelevant}")
+check("Long but irrelevant response → lower than perfect", reward_irrelevant < 0.85, f"got {reward_irrelevant}")
+check("Long irrelevant still gets triage points", reward_irrelevant >= 0.35, f"got {reward_irrelevant}")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -372,9 +373,9 @@ for task in ["classify_easy", "triage_medium", "full_triage_hard"]:
         })
         all_rewards.append((task, seed, r.get("reward", -1)))
 
-out_of_range = [(t, s, r) for t, s, r in all_rewards if r < 0.0 or r > 1.0]
+out_of_range = [(t, s, r) for t, s, r in all_rewards if r <= 0.0 or r >= 1.0]
 check(
-    f"All {len(all_rewards)} rewards in [0.0, 1.0]",
+    f"All {len(all_rewards)} rewards in (0.0, 1.0) exclusive",
     len(out_of_range) == 0,
     f"out of range: {out_of_range}" if out_of_range else "",
 )

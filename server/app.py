@@ -77,7 +77,7 @@ class ResetResponse(BaseModel):
 
 class StepResponse(BaseModel):
     observation: Observation
-    reward: Optional[float] = None
+    reward: Optional[float] = Field(None, gt=0.0, lt=1.0)
     done: bool = False
     state: State
 
