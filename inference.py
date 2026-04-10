@@ -40,24 +40,20 @@ import os
 import subprocess
 import sys
 import textwrap
+import urllib.request
+import urllib.error
 from typing import List, Optional
 
-# ── Bootstrap: ensure dependencies are installed in validator environments ──
-def _ensure_deps() -> None:
-    for pkg in ("requests", "openai"):
-        try:
-            __import__(pkg)
-        except ImportError:
-            subprocess.check_call(
-                [sys.executable, "-m", "pip", "install", "-q", pkg],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-
-_ensure_deps()
-
-import requests
-from openai import OpenAI
+# ── Bootstrap: ensure openai is installed ──────────────────────────────────
+try:
+    from openai import OpenAI
+except ImportError:
+    subprocess.check_call(
+        [sys.executable, "-m", "pip", "install", "-q", "openai"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    from openai import OpenAI
 
 # ── Configuration ────────────────────────────────────────────────────────────
 
@@ -317,9 +313,21 @@ def call_llm(llm: OpenAI, observation: dict) -> dict:
 
 # ── Task runner ──────────────────────────────────────────────────────────────
 
+def _post_json(url: str, payload: dict, timeout: int = 60) -> dict:
+    """POST JSON to a URL using stdlib urllib. Returns parsed response dict."""
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
 def _run_one_seed(
     llm: OpenAI,
-    env: requests.Session,
     task_name: str,
     seed: int,
 ) -> tuple[dict, float, bool, Optional[str]]:
@@ -336,26 +344,24 @@ def _run_one_seed(
     error: Optional[str] = None
 
     try:
-        reset_resp = env.post(f"{ENV_BASE_URL}/reset", json={"task_name": task_name, "seed": seed}, timeout=60)
-        reset_resp.raise_for_status()
-        observation = reset_resp.json()["observation"]
+        reset_data = _post_json(f"{ENV_BASE_URL}/reset", {"task_name": task_name, "seed": seed})
+        observation = reset_data["observation"]
 
         action_dict = call_llm(llm, observation)
 
-        step_resp = env.post(f"{ENV_BASE_URL}/step", json={"action": action_dict}, timeout=60)
-        step_resp.raise_for_status()
-        step_data = step_resp.json()
+        step_data = _post_json(f"{ENV_BASE_URL}/step", {"action": action_dict})
         reward = float(step_data.get("reward") or 0.0)
         done = bool(step_data.get("done", False))
-    except requests.exceptions.HTTPError as http_err:
-        error = f"HTTP {http_err.response.status_code}: {http_err.response.text[:200]}"
+    except urllib.error.HTTPError as http_err:
+        body = http_err.read().decode("utf-8", errors="replace")[:200]
+        error = f"HTTP {http_err.code}: {body}"
     except Exception as exc:
         error = f"{type(exc).__name__}: {exc}"
 
     return action_dict, reward, done, error
 
 
-def run_task(llm: OpenAI, env: requests.Session, task_name: str) -> None:
+def run_task(llm: OpenAI, task_name: str) -> None:
     """
     Run a single task end-to-end across all benchmark seeds.
 
@@ -370,14 +376,14 @@ def run_task(llm: OpenAI, env: requests.Session, task_name: str) -> None:
 
     rewards: List[float] = []
     steps_taken = 0
-    score = 0.0
+    score = 0.001  # Strictly > 0 per OpenEnv spec
     success = False
 
     try:
         for step_num, seed in enumerate(BENCHMARK_SEEDS, start=1):
             steps_taken = step_num
             action_dict, reward, done, error = _run_one_seed(
-                llm, env, task_name, seed
+                llm, task_name, seed
             )
             rewards.append(reward)
             log_step(
@@ -388,9 +394,9 @@ def run_task(llm: OpenAI, env: requests.Session, task_name: str) -> None:
                 error=error,
             )
 
-        # Final score is the mean reward across the seeds, clamped to [0, 1].
+        # Final score is the mean reward across the seeds, clamped to (0, 1) exclusive.
         if rewards:
-            score = max(0.0, min(1.0, sum(rewards) / len(rewards)))
+            score = max(0.001, min(0.999, sum(rewards) / len(rewards)))
         success = score >= SUCCESS_THRESHOLD
 
     except Exception as exc:
@@ -409,20 +415,21 @@ def main() -> None:
 
     llm = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
 
-    with requests.Session() as env:
-        # Sanity-ping the environment before running tasks.
-        try:
-            health = env.get(f"{ENV_BASE_URL}/", timeout=60)
-            health.raise_for_status()
-        except Exception as exc:
-            print(
-                f"ERROR: Cannot reach environment at {ENV_BASE_URL}: {exc}",
-                file=sys.stderr,
-            )
-            sys.exit(2)
+    # Sanity-ping the environment before running tasks.
+    try:
+        req = urllib.request.Request(f"{ENV_BASE_URL}/", method="GET")
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            if resp.status != 200:
+                raise RuntimeError(f"Health check returned {resp.status}")
+    except Exception as exc:
+        print(
+            f"ERROR: Cannot reach environment at {ENV_BASE_URL}: {exc}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
-        for task_name in TASKS:
-            run_task(llm, env, task_name)
+    for task_name in TASKS:
+        run_task(llm, task_name)
 
 
 if __name__ == "__main__":

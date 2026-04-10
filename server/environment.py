@@ -186,12 +186,13 @@ class EmailTriageEnvironment:
                 missing.append(field)
 
         if missing:
-            # Penalize but still end the episode
+            # Penalize but still end the episode.
+            # Score must be strictly > 0 per OpenEnv spec.
             self._state.step_count += 1
             self._state.done = True
             return Observation(
-                feedback=f"Missing required fields: {missing}. Score: 0.0",
-                reward=0.0,
+                feedback=f"Missing required fields: {missing}. Score: 0.001",
+                reward=0.001,
                 done=True,
                 error_message=f"Required fields not provided: {missing}",
             )

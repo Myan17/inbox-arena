@@ -1,7 +1,7 @@
 """
 Grading functions for Email Triage tasks.
 
-Each grader returns a float score in [0.0, 1.0] with meaningful partial credit.
+Each grader returns a float score in (0.0, 1.0) — strictly between 0 and 1.
 Graders are deterministic and reproducible — no LLM-as-judge, no network calls,
 no randomness. They run in microseconds.
 
@@ -352,8 +352,15 @@ GRADERS = {
 
 
 def grade(task_name: str, action: TriageAction, truth: GroundTruth) -> tuple[float, str]:
-    """Grade an action for the given task. Returns (score, feedback)."""
+    """Grade an action for the given task. Returns (score, feedback).
+
+    Scores are clamped to (0.0, 1.0) exclusive — the OpenEnv spec requires
+    strictly between 0 and 1.
+    """
     grader = GRADERS.get(task_name)
     if grader is None:
-        return 0.0, f"Unknown task: {task_name}"
-    return grader(action, truth)
+        return 0.001, f"Unknown task: {task_name}"
+    score, feedback = grader(action, truth)
+    # Clamp to open interval (0, 1) — 0.0 and 1.0 are not allowed
+    score = max(0.001, min(0.999, score))
+    return score, feedback

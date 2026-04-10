@@ -140,14 +140,22 @@ fi
 
 log "${BOLD}Step 3/3: Running openenv validate${NC} ..."
 
-if ! command -v openenv &>/dev/null; then
+OPENENV_CMD=""
+if command -v openenv &>/dev/null; then
+  OPENENV_CMD="openenv"
+elif [ -x "$REPO_DIR/.venv/bin/openenv" ]; then
+  OPENENV_CMD="$REPO_DIR/.venv/bin/openenv"
+fi
+
+if [ -z "$OPENENV_CMD" ]; then
   fail "openenv command not found"
   hint "Install it: pip install openenv-core"
+  hint "Or create a project venv so $REPO_DIR/.venv/bin/openenv exists."
   stop_at "Step 3"
 fi
 
 VALIDATE_OK=false
-VALIDATE_OUTPUT=$(cd "$REPO_DIR" && openenv validate 2>&1) && VALIDATE_OK=true
+VALIDATE_OUTPUT=$(cd "$REPO_DIR" && "$OPENENV_CMD" validate 2>&1) && VALIDATE_OK=true
 
 if [ "$VALIDATE_OK" = true ]; then
   pass "openenv validate passed"
