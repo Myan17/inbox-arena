@@ -279,6 +279,42 @@ inbox-arena/
 
 ## Baseline Scores
 
+### Policy ladder (reproducible, no model required)
+
+```bash
+python benchmarks/policy_baseline.py
+```
+
+Six scripted policies, 60 episodes per task, scored by the current graders. This
+exists to answer the question an LLM number cannot: **does the reward function
+actually discriminate?**
+
+| Policy | classify_easy | triage_medium | full_triage_hard |
+|---|---|---|---|
+| constant guess | 0.201 | 0.194 | 0.330 |
+| uniform random | 0.251 | 0.260 | 0.358 |
+| keyword heuristic | 0.450 | 0.340 | 0.397 |
+| perfect fields, no draft | 0.999 | 0.999 | 0.470 |
+| perfect fields + generic "slop" draft | 0.999 | 0.999 | 0.617 |
+| perfect fields + attentive draft | 0.999 | 0.999 | **0.928** |
+
+It does. On the hard task the gap between a fluent-but-empty draft and one that
+cites the email's entities is **+0.311** with the structured fields held
+identical — that gap is the response-quality rubric doing its job. Every task
+separates the attentive policy from the constant guesser by at least +0.598.
+The ordering is pinned by `tests/test_policy_baseline.py`, so a grader change
+that flattens it fails CI.
+
+### LLM baseline (historical)
+
+> **These scores predate the current grader and are not reproducible against
+> it.** `server/graders.py` records that the earlier grader "gave 0.90 baseline
+> to an 8B model on the hard task" and was rebalanced to land a zero-shot 8B
+> model in the 0.40–0.65 range. The table below was produced before that
+> rebalance. The policy ladder above sits consistently with the new
+> calibration: a generic draft now scores 0.617 on the hard task. Rerunning
+> `inference.py` against the live Space is the way to get a current number.
+
 **Model:** `meta-llama/Llama-3.1-8B-Instruct` via HF Inference Router
 **Env target:** live HF Space (`https://myan9417-inbox-arena.hf.space`)
 **Config:** `seed=42`, `temperature=0.0`, `max_tokens=500`
@@ -290,9 +326,25 @@ inbox-arena/
 | full_triage_hard | Hard | **0.900** | ✅ |
 | **Average** | | **0.967** | |
 
-Scores are deterministic and reproduce on repeat runs with the same seed and
-temperature. Last verified end-to-end with the `inference.py` strict stdout
-format on 2026-04-06.
+Last verified end-to-end with the `inference.py` strict stdout format on
+2026-04-06, against the pre-rebalance grader.
+
+## Testing
+
+```bash
+pip install -r server/requirements.txt pytest
+pytest tests -q
+```
+
+52 tests with no network and no running server, plus a live stress test that
+CI runs against the built container:
+
+| Suite | Tests | Covers |
+|---|---|---|
+| `test_graders.py` | 20 | exact partial-credit weights, slop-vs-attentive ordering, entity reward, Brier calibration bonus and caps, reward-range bounds, determinism |
+| `test_environment.py` | 20 | reset/step protocol, step-before-reset and double-step rejection, seeded replay, benchmark fixtures, perturbations preserving ground truth |
+| `test_policy_baseline.py` | 12 | policy ordering on every task, published means, determinism |
+| `scripts/stress_test.py` | live | every endpoint against the real container, run in CI after `docker build` |
 
 ### Reproducing the baseline
 
